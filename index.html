@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>GOLD MOBILE EA</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    body {
+      background: #0D1117;
+      color: #F3F4F6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 12px rgba(16, 185, 129, 0.35); }
+      50% { box-shadow: 0 0 22px rgba(16, 185, 129, 0.8); }
+    }
+
+    .pulse-emerald {
+      animation: pulseGlow 2s infinite ease-in-out;
+    }
+
+    input, select {
+      outline: none;
+    }
+  </style>
+</head>
+
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+/* =========================================================
+   CONFIGURATION
+========================================================= */
+const RENDER_BACKEND_URL = "https://gold-trading-bot-1-15n5.onrender.com";
+
+const MASTER_KEYS = ["BOSSMODE98", "BOSSMODE99"];
+const ADMIN_PASSWORD = "ASHIRAF_ADMIN_2026";
+
+const PRICE_UGX = 220000;
+const RECIPIENT_NAME = "Luwaga Ashiraf";
+const RECIPIENT_PHONE = "0788500237";
+const WHATSAPP_NUMBER = "256788500237";
+
+const STORAGE = {
+  USER: "gme_user",
+  LICENSE: "gme_license",
+  TIER: "gme_license_tier",
+  EXPIRY: "gme_license_expiry",
+  PAID_EMAILS: "gme_paid_emails",
+  MT5_LOGIN: "gme_mt5_login",
+  MT5_SERVER: "gme_mt5_server",
+  MT5_SYMBOL: "gme_mt5_symbol",
+  MT5_PASSWORD: "gme_mt5_password",
+  MT5_UPDATED: "gme_mt5_updated"
+};
+
+/* =========================================================
+   HELPERS
+========================================================= */
+const generateReference = () =>
+  "GME-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7).toUpperCase();
+
+const generatePaidKey = () =>
+  "BOSSMODE30D-" + Math.random().toString(36).substring(2, 7).toUpperCase();
+
+const getDaysLeft = (expiry) => {
+  if (!expiry) return 0;
+  const remaining = Number(expiry) - Date.now();
+  return remaining <= 0 ? 0 : Math.ceil(remaining / 86400000);
+};
+
+const formatTime = (seconds) => {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${h}h ${m}m ${s}s`;
+};
+
+const getPaidEmails = () => {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE.PAID_EMAILS) || "{}");
+  } catch {
+    return {};
+  }
+};
+
+const savePaidEmail = (email, data) => {
+  const all = getPaidEmails();
+  all[String(email).toLowerCase()] = data;
+  localStorage.setItem(STORAGE.PAID_EMAILS, JSON.stringify(all));
+};
+
+const getPaidEmailData = (email) => {
+  return getPaidEmails()[String(email || "").toLowerCase()] || null;
+};
+
+/* =========================================================
+   MAIN APP
+========================================================= */
+function App() {
+  const [currentUser, setCurrentUser] = useState(
+    localStorage.getItem(STORAGE.USER) || ""
+  );
+
+  const [activeTab, setActiveTab] = useState("activation");
+
+  /* Auth */
+  const [authMode, setAuthMode] = useState("signin");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
+
+  /* License */
+  const [licenseInput, setLicenseInput] = useState("");
+  const [activeLicense, setActiveLicense] = useState(
+    localStorage.getItem(STORAGE.LICENSE) || ""
+  );
+  const [licenseTier, setLicenseTier] = useState(
+    localStorage.getItem(STORAGE.TIER) || ""
+  );
+  const [licenseExpiry, setLicenseExpiry] = useState(
+    Number(localStorage.getItem(STORAGE.EXPIRY) || 0)
+  );
+  const [trialSeconds, setTrialSeconds] = useState(0);
+
+  /* Payment */
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [network, setNetwork] = useState("MTN");
+  const [transactionId, setTransactionId] = useState("");
+  const [paymentMessage, setPaymentMessage] = useState("");
+
+  /* MT5 */
+  const [mt5Login, setMt5Login] = useState(
+    localStorage.getItem(STORAGE.MT5_LOGIN) || ""
+  );
+  const [mt5Server, setMt5Server] = useState(
+    localStorage.getItem(STORAGE.MT5_SERVER) || "Exness-MT5Real"
+  );
+  const [mt5Symbol, setMt5Symbol] = useState(
+    localStorage.getItem(STORAGE.MT5_SYMBOL) || "XAUUSDm"
+  );
+  const [mt5Password, setMt5Password] = useState(
+    localStorage.getItem(STORAGE.MT5_PASSWORD) || ""
+  );
+  const [showMt5Password, setShowMt5Password] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(
+    localStorage.getItem(STORAGE.MT5_UPDATED) || "—"
+  );
+
+  /* Bot */
+  const [botRunning, setBotRunning] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [connectionText, setConnectionText] = useState("DISCONNECTED");
+  const [connectionError, setConnectionError] = useState("");
+
+  const [balance, setBalance] = useState("0.00");
+  const [equity, setEquity] = useState("0.00");
+  const [openPositions, setOpenPositions] = useState(0);
+  const [floatingPnl, setFloatingPnl] = useState(0);
+
+  /* Admin */
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [generatedKey, setGeneratedKey] = useState("");
+  const [adminSearchEmail, setAdminSearchEmail] = useState("");
+  const [adminActionMessage, setAdminActionMessage] = useState("");
+
+  /* Restore paid email subscription */
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const paid = getPaidEmailData(currentUser);
+
+    if (
+      paid &&
+      paid.status === "ACTIVE" &&
+      paid.expiresAt > Date.now()
+    ) {
+      setActiveLicense(paid.licenseKey);
+      setLicenseTier("30day");
+      setLicenseExpiry(paid.expiresAt);
+
+      localStorage.setItem(STORAGE.LICENSE, paid.licenseKey);
+      localStorage.setItem(STORAGE.TIER, "30day");
+      localStorage.setItem(STORAGE.EXPIRY, String(paid.expiresAt));
+    }
+  }, [currentUser]);
+
+  /* Trial countdown */
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (licenseTier !== "trial") return;
+
+      const started = Number(localStorage.getItem("gme_trial_start") || 0);
+      if (!started) return;
+
+      const remaining = 86400 - Math.floor((Date.now() - started) / 1000);
+      setTrialSeconds(remaining > 0 ? remaining : 0);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [licenseTier]);
+
+  /* Bot telemetry polling */
+  useEffect(() => {
+    if (!botRunning || !mt5Login) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(
+          `${RENDER_BACKEND_URL}/status?login=${mt5Login}`
+        );
+
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const node = data?.telemetry?.[mt5Login] || {};
+
+        setConnected(Boolean(node.connected_to_broker));
+        setBalance(node.balance ? Number(node.balance).toFixed(2) : "0.00");
+        setEquity(node.equity ? Number(node.equity).toFixed(2) : "0.00");
+        setOpenPositions(node.open_positions_count || 0);
+        setFloatingPnl(node.floating_pnl || 0);
+        setConnectionText(
+          node.connected_to_broker ? "CONNECTED" : "BROKER DISCONNECTED"
+        );
+      } catch {}
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [botRunning, mt5Login]);
+
+  /* Auth */
+  const handleAuth = (event) => {
+    event.preventDefault();
+
+    if (!authEmail || !authPassword) return;
+
+    const email = authEmail.toLowerCase().trim();
+
+    localStorage.setItem(STORAGE.USER, email);
+    setCurrentUser(email);
+  };
+
+  const signOut = () => {
+    localStorage.removeItem(STORAGE.USER);
+    setCurrentUser("");
+  };
+
+  /* License unlock */
+  const handleUnlockLicense = () => {
+    const key = licenseInput.trim().toUpperCase();
+
+    if (!key) return;
+
+    if (MASTER_KEYS.includes(key)) {
+      activateLicense(key, "master", Date.now() + 365 * 86400000);
+      return;
+    }
+
+    if (key.startsWith("BOSSMODE30D-")) {
+      activateLicense(key, "30day", Date.now() + 30 * 86400000);
+      return;
+    }
+
+    if (key.startsWith("BOSSMODE01D-")) {
+      if (!localStorage.getItem("gme_trial_start")) {
+        localStorage.setItem("gme_trial_start", String(Date.now()));
+      }
+
+      activateLicense(key, "trial", Date.now() + 86400000);
+      return;
+    }
+
+    alert("Invalid license key.");
+  };
+
+  const activateLicense = (key, tier, expiry) => {
+    setActiveLicense(key);
+    setLicenseTier(tier);
+    setLicenseExpiry(expiry);
+
+    localStorage.setItem(STORAGE.LICENSE, key);
+    localStorage.setItem(STORAGE.TIER, tier);
+    localStorage.setItem(STORAGE.EXPIRY, String(expiry));
+  };
+
+  /* =========================================================
+     OPTION 3: MANUAL MOBILE MONEY + WHATSAPP PROOF
+  ========================================================= */
+  const handleOption3Payment = () => {
+    if (!customerPhone || customerPhone.length < 9) {
+      setPaymentMessage("Enter your Mobile Money phone number.");
+      return;
+    }
+
+    if (!transactionId) {
+      setPaymentMessage("Enter your Mobile Money transaction ID.");
+      return;
+    }
+
+    const reference = generateReference();
+
+    const message =
+`GOLD MOBILE EA PAYMENT PROOF
+
+Customer Email: ${currentUser}
+License Key: ${activeLicense || "Not entered yet"}
+Customer Phone: ${customerPhone}
+Payment Network: ${network}
+Amount Sent: ${PRICE_UGX.toLocaleString()} UGX
+Payment Reference: ${reference}
+Mobile Money Transaction ID: ${transactionId}
+
+Request: Please confirm this payment and keep this license active for 30 days.`;
+
+    const whatsappUrl =
+      "https://wa.me/" +
+      WHATSAPP_NUMBER +
+      "?text=" +
+      encodeURIComponent(message);
+
+    window.open(whatsappUrl, "_blank");
+
+    completePayment({
+      reference,
+      transactionId,
+      network,
+      phone: customerPhone
+    });
+  };
+
+  /* Complete payment and activate license for 30 days */
+  const completePayment = ({ reference, transactionId, network, phone }) => {
+    const now = Date.now();
+
+    const currentExpiry =
+      licenseExpiry > now ? licenseExpiry : now;
+
+    const newExpiry = currentExpiry + 30 * 86400000;
+
+    const licenseKey =
+      activeLicense || generatePaidKey();
+
+    savePaidEmail(currentUser, {
+      email: currentUser,
+      licenseKey,
+      method: "Option 3 - Manual Mobile Money + WhatsApp Proof",
+      reference,
+      transactionId,
+      phone,
+      network,
+      amount: PRICE_UGX,
+      status: "ACTIVE",
+      activatedAt: now,
+      expiresAt: newExpiry
+    });
+
+    activateLicense(licenseKey, "30day", newExpiry);
+
+    setShowPaymentModal(false);
+    setTransactionId("");
+    setPaymentMessage("");
+
+    alert(
+      "Payment proof submitted.\n\n" +
+      "Your license is active for 30 days.\n\n" +
+      "License Key: " + licenseKey
+    );
+  };
+
+  /* MT5 credentials */
+  const saveCredentials = () => {
+    if (!mt5Login || !mt5Server || !mt5Password) {
+      alert("Enter MT5 Login, Server, and Password.");
+      return;
+    }
+
+    localStorage.setItem(STORAGE.MT5_LOGIN, mt5Login);
+    localStorage.setItem(STORAGE.MT5_SERVER, mt5Server);
+    localStorage.setItem(STORAGE.MT5_SYMBOL, mt5Symbol);
+    localStorage.setItem(STORAGE.MT5_PASSWORD, mt5Password);
+
+    const now = new Date().toLocaleString();
+    localStorage.setItem(STORAGE.MT5_UPDATED, now);
+    setLastUpdated(now);
+
+    alert("MT5 credentials saved.");
+  };
+
+  /* Start bot */
+  const startBot = async () => {
+    if (!mt5Login || !mt5Password) {
+      alert("Enter and save your MT5 credentials first.");
+      setActiveTab("activation");
+      return;
+    }
+
+    setConnectionError("");
+    setConnectionText("CONNECTING (ATTEMPT 1/3)...");
+
+    const payload = {
+      command: "START",
+      license_key: activeLicense,
+      mt5_login: mt5Login,
+      mt5_password: mt5Password,
+      mt5_server: mt5Server,
+      mt5_symbol: mt5Symbol
+    };
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        setConnectionText(
+          "CONNECTING (ATTEMPT " + attempt + "/3)..."
+        );
+
+        const response = await fetch(RENDER_BACKEND_URL + "/control", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+
+          if (data.success || data.status === "success") {
+            setBotRunning(true);
+            setConnected(true);
+            setConnectionText("CONNECTED & TRADING");
+            setActiveTab("home");
+            return;
+          }
+        }
+      } catch {}
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, attempt * 1500)
+      );
+    }
+
+    setConnectionText("CONNECTION FAILED");
+    setConnectionError(
+      "Broker connection failed after 3 attempts. Check Server, Login, and Password."
+    );
+  };
+
+  /* Stop bot */
+  const stopBot = async () => {
+    try {
+      await fetch(RENDER_BACKEND_URL + "/control", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          command: "STOP",
+          license_key: activeLicense,
+          mt5_login: mt5Login
+        })
+      });
+    } catch {}
+
+    setBotRunning(false);
+    setConnected(false);
+    setConnectionText("STOPPED");
+  };
+
+  /* Admin: generate key */
+  const adminGenerateKey = () => {
+    const key = generatePaidKey();
+    setGeneratedKey(key);
+
+    const now = Date.now();
+
+    savePaidEmail(currentUser, {
+      email: currentUser,
+      licenseKey: key,
+      method: "Admin Prepaid Key",
+      reference: generateReference(),
+      transactionId: "ADMIN_APPROVED",
+      status: "ACTIVE",
+      activatedAt: now,
+      expiresAt: now + 30 * 86400000
+    });
+  };
+
+  /* Admin: revoke email */
+  const adminRevokeEmail = () => {
+    const email = adminSearchEmail.toLowerCase().trim();
+
+    if (!email) {
+      setAdminActionMessage("Enter the customer email to revoke.");
+      return;
+    }
+
+    const all = getPaidEmails();
+
+    if (!all[email]) {
+      setAdminActionMessage("No paid account found for this email.");
+      return;
+    }
+
+    all[email].status = "REVOKED";
+    all[email].expiresAt = 0;
+
+    localStorage.setItem(
+      STORAGE.PAID_EMAILS,
+      JSON.stringify(all)
+    );
+
+    if (currentUser === email) {
+      localStorage.removeItem(STORAGE.LICENSE);
+      localStorage.removeItem(STORAGE.TIER);
+      localStorage.removeItem(STORAGE.EXPIRY);
+
+      setActiveLicense("");
+      setLicenseTier("");
+      setLicenseExpiry(0);
+    }
+
+    setAdminActionMessage("License revoked for " + email);
+  };
+
+  /* Admin: extend email */
+  const adminExtendEmail = () => {
+    const email = adminSearchEmail.toLowerCase().trim();
+
+    if (!email) {
+      setAdminActionMessage("Enter the customer email to extend.");
+      return;
+    }
+
+    const all = getPaidEmails();
+
+    if (!all[email]) {
+      setAdminActionMessage("No paid account found for this email.");
+      return;
+    }
+
+    const now = Date.now();
+    const currentExpiry =
+      all[email].expiresAt > now ? all[email].expiresAt : now;
+
+    const newExpiry = currentExpiry + 30 * 86400000;
+
+    all[email].status = "ACTIVE";
+    all[email].expiresAt = newExpiry;
+
+    localStorage.setItem(
+      STORAGE.PAID_EMAILS,
+      JSON.stringify(all)
+    );
+
+    if (currentUser === email) {
+      setLicenseExpiry(newExpiry);
+      localStorage.setItem(STORAGE.EXPIRY, String(newExpiry));
+    }
+
+    setAdminActionMessage(
+      "License extended by 30 days for " + email
+    );
+  };
+
+  /* =========================================================
+     AUTH SCREEN
+  ========================================================= */
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-[#161B22] border border-gray-800 rounded-2xl p-6 shadow-2xl">
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <i data-lucide="gem" className="w-7 h-7 text-[#00D4B2]"></i>
+            <h1 className="text-xl font-black tracking-wider">
+              GOLD MOBILE EA
+            </h1>
+          </div>
+
+          <div className="flex bg-[#0D1117] p-1 rounded-xl border border-gray-800 mb-5">
+            <button
+              onClick={() => setAuthMode("signin")}
+              className={`flex-1 py-2 text-sm rounded-lg font-semibold ${
+                authMode === "signin"
+                  ? "bg-[#161B22] text-[#00D4B2]"
+                  : "text-gray-400"
+              }`}
+            >
+              Sign In
+            </button>
+
+            <button
+              onClick={() => setAuthMode("signup")}
+              className={`flex-1 py-2 text-sm rounded-lg font-semibold ${
+                authMode === "signup"
+                  ? "bg-[#161B22] text-[#00D4B2]"
+                  : "text-gray-400"
+              }`}
+            >
+              Create Account
+            </button>
+          </div>
+
+          <form onSubmit={handleAuth} className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-400 block mb-1">
+                EMAIL ADDRESS
+              </label>
+
+              <input
+                type="email"
+                required
+                value={authEmail}
+                onChange={(event) => setAuthEmail(event.target.value)}
+                placeholder="user@example.com"
+                className="w-full bg-[#0D1117] border border-gray-800 rounded-xl px-4 py-3 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-400 block mb-1">
+                PASSWORD
+              </label>
+
+              <div className="relative">
+                <input
+                  type={showAuthPassword ? "text" : "password"}
+                  required
+                  value={authPassword}
+                  onChange={(event) => setAuthPassword(event.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-[#0D1117] border border-gray-800 rounded-xl px-4 py-3 text-sm"
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowAuthPassword(!showAuthPassword)
+                  }
+                  className="absolute right-3 top-3.5 text-gray-400"
+                >
+                  <i
+                    data-lucide={showAuthPassword ? "eye-off" : "eye"}
+                    className="w-4 h-4"
+                  ></i>
+                </button>
+              </div>
+            </div>
+
+            <button className="w-full bg-[#00D4B2] hover:bg-[#00c2a2] text-black font-bold py-3.5 rounded-xl flex items-center justify-center gap-2">
+              Continue
+              <i data-lucide="arrow-right" className="w-4 h-4"></i>
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  /* =========================================================
+     MAIN APP
+  ========================================================= */
+  const daysLeft = getDaysLeft(licenseExpiry);
+  const licenseActive = daysLeft > 0 || licenseTier === "master";
+
+  return (
+    <div className="min-h-screen pb-24">
+      {/* Header */}
+      <div className="sticky top-0 z-40 bg-[#161B22]/95 backdrop-blur border-b border-gray-800 px-4 py-3.5 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <i data-lucide="gem" className="w-6 h-6 text-[#00D4B2]"></i>
+          <span className="font-black tracking-wider text-sm">
+            GOLD MOBILE EA
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span
+            className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+              connected
+                ? "bg-emerald-950/60 border-emerald-500 text-emerald-400 pulse-emerald"
+                : "bg-[#0D1117] border-gray-700 text-gray-400"
+            }`}
+          >
+            {connected ? "LIVE" : "IDLE"}
+          </span>
+
+          <button
+            onClick={signOut}
+            className="text-gray-400 hover:text-white"
+          >
+            <i data-lucide="log-out" className="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      {/* Error */}
+      {connectionError && (
+        <div className="m-4 p-3 bg-red-950/60 border border-red-500/50 rounded-xl text-red-200 text-xs flex gap-2">
+          <i
+            data-lucide="alert-triangle"
+            className="w-5 h-5 text-red-400"
+          ></i>
+          <span>{connectionError}</span>
+        </div>
+      )}
+
+      {/* HOME */}
+      {activeTab === "home" && (
+        <div className="p-4 space-y-4 max-w-lg mx-auto">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-[#161B22] p-4 rounded-xl border border-gray-800">
+              <div className="flex justify-between text-xs text-gray-400 font-semibold mb-1">
+                <span>MT5 CONNECTION</span>
+                <i
+                  data-lucide="link-2"
+                  className="w-4 h-4 text-[#00D4B2]"
+                ></i>
+              </div>
+
+              <div
+                className={`text-sm font-bold ${
+                  connected
+                    ? "text-emerald-400"
+                    : "text-gray-300"
+                }`}
+              >
+                {connectionText}
+              </div>
+            </div>
+
+            <div className="bg-[#161B22] p-4 rounded-xl border border-gray-800">
+              <div className="flex justify-between text-xs text-gray-400 font-semibold mb-1">
+                <span>BOT STATUS</span>
+                <i
+                  data-lucide="cpu"
+                  className="w-4 h-4 text-[#00D4B2]"
+                ></i>
+              </div>
+
+              <div
+                className={`text-sm font-bold ${
+                  botRunning
+                    ? "text-emerald-400"
+                    : "text-gray-400"
+                }`}
+              >
+                {botRunning ? "ACTIVE SCALPER" : "STOPPED"}
+              </div>
+            </div>
+
+            <div className="bg-[#161B22] p-4 rounded-xl border border-gray-800">
+              <div className="text-xs text-gray-400 font-semibold mb-1">
+                BALANCE
+              </div>
+              <div className="text-xl font-black">${balance}</div>
+            </div>
+
+            <div className="bg-[#161B22] p-4 rounded-xl border border-gray-800">
+              <div className="text-xs text-gray-400 font-semibold mb-1">
+                EQUITY
+              </div>
+              <div className="text-xl font-black">${equity}</div>
+            </div>
+          </div>
+
+          <div className="bg-[#161B22] p-4 rounded-xl border border-gray-800 flex justify-between items-center">
+            <div>
+              <div className="text-xs text-gray-400 font-semibold">
+                OPEN TRADES
+              </div>
+              <div className="text-2xl font-black">
+                {openPositions}
+              </div>
+            </div>
+
+            <div className="text-right">
+              <div className="text-xs text-gray-400 font-semibold">
+                FLOATING PNL
+              </div>
+              <div
+                className={`text-2xl font-black ${
+                  floatingPnl >= 0
+                    ? "text-emerald-400"
+                    : "text-red-400"
+                }`}
+              >
+                {floatingPnl >= 0
+                  ? "+$" + floatingPnl.toFixed(2)
+                  : "-$" + Math.abs(floatingPnl).toFixed(2)}
+              </div>
+            </div>
+          </div>
+
+          {!botRunning ? (
+            <button
+              onClick={startBot}
+              className="w-full bg-[#00D4B2] hover:bg-[#00c2a2] text-black font-black py-4 rounded-xl flex items-center justify-center gap-2"
+            >
+              <i data-lucide="play" className="w-5 h-5"></i>
+              START BOT
+            </button>
+          ) : (
+            <button
+              onClick={stopBot}
+              className="w-full bg-emerald-500 pulse-emerald text-black font-black py-4 rounded-xl flex items-center justify-center gap-2"
+            >
+              <i data-lucide="square" className="w-5 h-5"></i>
+              STOP BOT
+            </button>
+          )}
+
+          <button
+            onClick={stopBot}
+            className="w-full bg-red-950/40 border border-red-800 text-red-400 font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2"
+          >
+            <i data-lucide="alert-octagon" className="w-4 h-4"></i>
+            EMERGENCY HARD RESET
+          </button>
+        </div>
+      )}
+
+      {/* ACTIVATION */}
+      {activeTab === "activation" && (
+        <div className="p-4 space-y-4 max-w-lg mx-auto">
+          <h2 className="text-xl font-black flex items-center gap-2">
+            <i data-lucide="zap" className="w-5 h-5 text-[#00D4B2]"></i>
+            Bot Activation
+          </h2>
+
+          {/* License */}
+          <div className="bg-[#161B22] p-5 rounded-2xl border border-gray-800 space-y-3">
+            {!activeLicense ? (
+              <>
+                <div className="flex items-center gap-2 text-[#00D4B2] font-bold text-sm">
+                  <i
+                    data-lucide="shield-check"
+                    className="w-5 h-5"
+                  ></i>
+                  Master License Key
+                </div>
+
+                <input
+                  value={licenseInput}
+                  onChange={(event) =>
+                    setLicenseInput(event.target.value)
+                  }
+                  placeholder="BOSSMODE99 / BOSSMODE30D-XXXXX"
+                  className="w-full bg-[#0D1117] border border-gray-800 rounded-xl px-4 py-3 text-sm uppercase"
+                />
+
+                <button
+                  onClick={handleUnlockLicense}
+                  className="w-full bg-[#00D4B2] text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2"
+                >
+                  <i data-lucide="key" className="w-4 h-4"></i>
+                  Unlock
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                  <i
+                    data-lucide="check-circle"
+                    className="w-5 h-5"
+                  ></i>
+                  License Active
+                </div>
+
+                <div className="text-xs text-gray-300">
+                  Key:{" "}
+                  <span className="font-mono text-[#00D4B2]">
+                    {activeLicense}
+                  </span>
+                </div>
+
+                {licenseTier === "trial" && (
+                  <div className="p-3 bg-amber-950/50 border border-amber-600/50 rounded-xl text-amber-200 text-xs">
+                    1-Day Trial Remaining:{" "}
+                    <span className="font-bold">
+                      {formatTime(trialSeconds)}
+                    </span>
+                  </div>
+                )}
+
+                {licenseTier === "30day" && (
+                  <div className="p-3 bg-emerald-950/50 border border-emerald-600/50 rounded-xl text-emerald-200 text-xs">
+                    VIP License Active:{" "}
+                    <span className="font-bold">
+                      {daysLeft} days remaining
+                    </span>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    localStorage.removeItem(STORAGE.LICENSE);
+                    localStorage.removeItem(STORAGE.TIER);
+                    localStorage.removeItem(STORAGE.EXPIRY);
+
+                    setActiveLicense("");
+                    setLicenseTier("");
+                    setLicenseExpiry(0);
+                  }}
+                  className="w-full bg-[#0D1117] border border-gray-700 text-gray-300 py-2.5 rounded-xl text-xs"
+                >
+                  Use a different key
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Payment */}
+          <div className="bg-[#161B22] p-5 rounded-2xl border border-gray-800 space-y-3">
+            <div className="flex items-center gap-2 text-[#00D4B2] font-bold text-sm">
+              <i
+                data-lucide="credit-card"
+                className="w-5 h-5"
+              ></i>
+              Activate 30-Day VIP License
+            </div>
+
+            <div className="bg-[#0D1117] p-3 rounded-xl border border-gray-800 text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Amount</span>
+                <span className="font-bold">
+                  {PRICE_UGX.toLocaleString()} UGX
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-gray-400">Recipient</span>
+                <span className="font-bold">
+                  {RECIPIENT_NAME}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-gray-400">Number</span>
+                <span className="font-mono text-[#00D4B2]">
+                  {RECIPIENT_PHONE}
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowPaymentModal(true)}
+              className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-3.5 rounded-xl flex items-center justify-center gap-2"
+            >
+              <i data-lucide="send" className="w-4 h-4"></i>
+              Pay {PRICE_UGX.toLocaleString()} UGX & Activate
+            </button>
+
+            <p className="text-[11px] text-gray-400">
+              Send Mobile Money to {RECIPIENT_PHONE}, then submit
+              your transaction ID. WhatsApp proof will open
+              automatically.
+            </p>
+          </div>
+
+          {/* MT5 credentials */}
+          {licenseActive && (
+            <div className="bg-[#161B22] p-5 rounded-2xl border border-gray-800 space-y-4">
+              <div className="flex justify-between text-xs">
+                <span className="font-bold text-gray-400">
+                  MT5 CONNECTION
+                </span>
+                <span className="text-gray-500">
+                  Updated: {lastUpdated}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <div className="text-gray-500">LOGIN ID</div>
+                  <div className="font-mono text-white">
+                    {mt5Login || "—"}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-gray-500">SERVER</div>
+                  <div className="font-mono text-white">
+                    {mt5Server || "—"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <input
+                  value={mt5Login}
+                  onChange={(event) =>
+                    setMt5Login(event.target.value)
+                  }
+                  placeholder="MT5 Login ID"
+                  className="w-full bg-[#0D1117] border border-gray-800 rounded-xl px-4 py-2.5 text-sm"
+                />
+
+                <input
+                  value={mt5Server}
+                  onChange={(event) =>
+                    setMt5Server(event.target.value)
+                  }
+                  placeholder="Broker Server"
+                  className="w-full bg-[#0D1117] border border-gray-800 rounded-xl px-4 py-2.5 text-sm"
+                />
+
+                <input
+                  value={mt5Symbol}
+                  onChange={(event) =>
+                    setMt5Symbol(event.target.value)
+                  }
+                  placeholder="Symbol"
+                  className="w-full bg-[#0D1117] border border-gray-800 rounded-xl px-4 py-2.5 text-sm"
+                />
+
+                <div className="relative">
+                  <input
+                    type={showMt5Password ? "text" : "password"}
+                    value={mt5Password}
+                    onChange={(event) =>
+                      setMt5Password(event.target.value)
+                    }
+                    placeholder="MT5 Password"
+                    className="w-full bg-[#0D1117] border border-gray-800 rounded-xl px-4 py-2.5 text-sm"
+                  />
+
+                  <button
+                    onClick={() =>
+                      setShowMt5Password(!showMt5Password)
+                    }
+                    className="absolute right-3 top-3 text-gray-400"
+                  >
+                    <i
+                      data-lucide={
+                        showMt5Password ? "eye-off" : "eye"
+                      }
+                      className="w-4 h-4"
+                    ></i>
+                  </button>
+                </div>
+
+                <button
+                  onClick={saveCredentials}
+                  className="w-full bg-[#0D1117] border border-[#00D4B2] text-[#00D4B2] font-bold py-3 rounded-xl"
+                >
+                  Update Credentials
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SETTINGS */}
+      {activeTab === "settings" && (
+        <div className="p-4 space-y-4 max-w-lg mx-auto">
+          <h2 className="text-xl font-black">Settings</h2>
+
+          <div className="bg-[#161B22] p-5 rounded-2xl border border-gray-800 space-y-2">
+            <div className="text-xs text-gray-400 font-bold">
+              CURRENT ACCOUNT
+            </div>
+
+            <div className="font-mono text-sm">
+              {currentUser}
+            </div>
+
+            <button
+              onClick={signOut}
+              className="text-xs text-red-400 hover:underline"
+            >
+              Sign Out
+            </button>
+          </div>
+
+          <div className="bg-[#161B22] p-5 rounded-2xl border border-gray-800 space-y-3">
+            <div className="flex items-center gap-2 font-bold text-sm">
+              <i
+                data-lucide="shield"
+                className="w-4 h-4 text-[#00D4B2]"
+              ></i>
+              Admin License Manager
+            </div>
+
+            {!adminUnlocked ? (
+              <>
+                <input
+                  type="password"
+                  value={adminPassword}
+                  onChange={(event) =>
+                    setAdminPassword(event.target.value)
+                  }
+                  placeholder="Enter Admin Password"
+                  className="w-full bg-[#0D1117] border border-gray-800 rounded-xl px-3 py-2 text-xs"
+                />
+
+                <button
+                  onClick={() => {
+                    if (adminPassword === ADMIN_PASSWORD) {
+                      setAdminUnlocked(true);
+                    } else {
+                      alert("Wrong admin password.");
+                    }
+                  }}
+                  className="w-full bg-gray-800 text-gray-200 font-bold py-2 rounded-xl text-xs"
+                >
+                  Access Admin
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={adminGenerateKey}
+                  className="w-full bg-emerald-500 text-black font-bold py-3 rounded-xl"
+                >
+                  Generate Paid 30-Day Key
+                </button>
+
+                {generatedKey && (
+                  <div className="p-3 bg-emerald-950 border border-emerald-800 rounded-xl text-emerald-300 font-mono text-center text-sm">
+                    {generatedKey}
+                  </div>
+                )}
+
+                <input
+                  value={adminSearchEmail}
+                  onChange={(event) =>
+                    setAdminSearchEmail(event.target.value)
+                  }
+                  placeholder="Customer email to manage"
+                  className="w-full bg-[#0D1117] border border-gray-800 rounded-xl px-3 py-2 text-xs"
+                />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={adminRevokeEmail}
+                    className="bg-red-950/60 border border-red-700 text-red-300 font-bold py-2 rounded-xl text-xs"
+                  >
+                    Revoke License
+                  </button>
+
+                  <button
+                    onClick={adminExtendEmail}
+                    className="bg-emerald-950/60 border border-emerald-700 text-emerald-300 font-bold py-2 rounded-xl text-xs"
+                  >
+                    Extend 30 Days
+                  </button>
+                </div>
+
+                {adminActionMessage && (
+                  <div className="text-xs text-gray-300">
+                    {adminActionMessage}
+                  </div>
+                )}
+
+                <div className="p-3 bg-[#0D1117] border border-gray-800 rounded-xl text-xs text-gray-300 space-y-1">
+                  <div className="font-bold text-white">
+                    Saved Paid Accounts
+                  </div>
+
+                  {Object.entries(getPaidEmails()).length === 0 && (
+                    <div className="text-gray-500">
+                      No paid accounts saved yet.
+                    </div>
+                  )}
+
+                  {Object.entries(getPaidEmails()).map(
+                    ([email, data]) => (
+                      <div
+                        key={email}
+                        className="border-b border-gray-800 pb-2"
+                      >
+                        <div className="font-mono">{email}</div>
+                        <div className="text-gray-400">
+                          {data.licenseKey} •{" "}
+                          {getDaysLeft(data.expiresAt)} days left
+                        </div>
+                      </div>
+                    )
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* PAYMENT MODAL */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[#161B22] border border-gray-800 rounded-2xl p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-gray-800 pb-3">
+              <h3 className="font-bold flex items-center gap-2">
+                <i
+                  data-lucide="lock"
+                  className="w-4 h-4 text-amber-400"
+                ></i>
+                VIP License Activation
+              </h3>
+
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="text-gray-400"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-[#0D1117] p-3 rounded-xl border border-gray-800 text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Amount</span>
+                <span className="font-bold">
+                  {PRICE_UGX.toLocaleString()} UGX
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-gray-400">Recipient</span>
+                <span className="font-bold">
+                  {RECIPIENT_NAME}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-gray-400">Number</span>
+                <span className="font-mono text-[#00D4B2]">
+                  {RECIPIENT_PHONE}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-gray-400 block mb-1">
+                YOUR PHONE NUMBER
+              </label>
+
+              <input
+                value={customerPhone}
+                onChange={(event) =>
+                  setCustomerPhone(event.target.value)
+                }
+                placeholder="077XXXXXXX / 070XXXXXXX"
+                className="w-full bg-[#0D1117] border border-gray-800 rounded-xl px-4 py-2.5 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-gray-400 block mb-1">
+                NETWORK
+              </label>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setNetwork("MTN")}
+                  className={`py-2 rounded-xl text-xs font-bold border ${
+                    network === "MTN"
+                      ? "bg-amber-950/60 border-amber-500 text-amber-300"
+                      : "bg-[#0D1117] border-gray-800 text-gray-400"
+                  }`}
+                >
+                  MTN MoMo
+                </button>
+
+                <button
+                  onClick={() => setNetwork("AIRTEL")}
+                  className={`py-2 rounded-xl text-xs font-bold border ${
+                    network === "AIRTEL"
+                      ? "bg-red-950/60 border-red-500 text-red-300"
+                      : "bg-[#0D1117] border-gray-800 text-gray-400"
+                  }`}
+                >
+                  Airtel Money
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-gray-400 block mb-1">
+                MOBILE MONEY TRANSACTION ID
+              </label>
+
+              <input
+                value={transactionId}
+                onChange={(event) =>
+                  setTransactionId(event.target.value)
+                }
+                placeholder="Paste transaction ID"
+                className="w-full bg-[#0D1117] border border-gray-800 rounded-xl px-4 py-2.5 text-sm"
+              />
+            </div>
+
+            {paymentMessage && (
+              <div className="text-red-400 text-xs">
+                {paymentMessage}
+              </div>
+            )}
+
+            <button
+              onClick={handleOption3Payment}
+              className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-3.5 rounded-xl flex items-center justify-center gap-2"
+            >
+              <i data-lucide="send" className="w-4 h-4"></i>
+              Submit & Send WhatsApp Proof
+            </button>
+
+            <p className="text-[11px] text-gray-400 text-center">
+              After submitting, WhatsApp opens with your payment
+              proof. Your license activates for 30 days.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom navigation */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#161B22] border-t border-gray-800 px-6 py-2 flex justify-around">
+        <button
+          onClick={() => setActiveTab("home")}
+          className={`flex flex-col items-center py-1 ${
+            activeTab === "home"
+              ? "text-[#00D4B2]"
+              : "text-gray-500"
+          }`}
+        >
+          <i data-lucide="home" className="w-5 h-5"></i>
+          <span className="text-[10px] font-bold">Home</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("activation")}
+          className={`flex flex-col items-center py-1 ${
+            activeTab === "activation"
+              ? "text-[#00D4B2]"
+              : "text-gray-500"
+          }`}
+        >
+          <i data-lucide="zap" className="w-5 h-5"></i>
+          <span className="text-[10px] font-bold">
+            Bot Activation
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("settings")}
+          className={`flex flex-col items-center py-1 ${
+            activeTab === "settings"
+              ? "text-[#00D4B2]"
+              : "text-gray-500"
+          }`}
+        >
+          <i data-lucide="settings" className="w-5 h-5"></i>
+          <span className="text-[10px] font-bold">Settings</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <App />
+);
+</script>
+</body>
+</html>
